@@ -1,0 +1,62 @@
+{
+  "date": "2026-11-01",
+  "timeZone": "America/Los_Angeles",
+  "events": [
+    {
+      "calendarId": "demo-family",
+      "id": "a",
+      "summary": "Demo: breakfast plan",
+      "start": {
+        "dateTime": "2026-11-01T09:00:00-08:00"
+      },
+      "end": {
+        "dateTime": "2026-11-01T09:30:00-08:00"
+      }
+    },
+    {
+      "calendarId": "demo-family",
+      "id": "b",
+      "summary": "Demo: grocery pickup",
+      "start": {
+        "dateTime": "2026-11-01T09:15:00-08:00"
+      },
+      "end": {
+        "dateTime": "2026-11-01T10:00:00-08:00"
+      }
+    },
+    {
+      "calendarId": "demo-family",
+      "id": "c",
+      "summary": "Demo: library books due",
+      "start": {
+        "date": "2026-11-01"
+      },
+      "end": {
+        "date": "2026-11-02"
+      }
+    },
+    {
+      "calendarId": "demo-family",
+      "id": "d",
+      "summary": "Demo: cancelled event",
+      "start": {
+        "dateTime": "2026-11-01T11:00:00-08:00"
+      },
+      "end": {
+        "dateTime": "2026-11-01T12:00:00-08:00"
+      },
+      "status": "cancelled"
+    },
+    {
+      "calendarId": "demo-family",
+      "id": "a",
+      "summary": "Demo: breakfast plan",
+      "start": {
+        "dateTime": "2026-11-01T09:00:00-08:00"
+      },
+      "end": {
+        "dateTime": "2026-11-01T09:30:00-08:00"
+      }
+    }
+  ]
+}

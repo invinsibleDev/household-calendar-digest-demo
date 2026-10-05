@@ -1,0 +1,74 @@
+{
+  "id": "householdDigestDemo",
+  "name": "Household calendar digest — synthetic local demo",
+  "active": false,
+  "nodes": [
+    {
+      "id": "Manual-demo",
+      "name": "Manual demo",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "Synthetic-calendar-events",
+      "name": "Synthetic calendar events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{json: {\"date\":\"2026-11-01\",\"timeZone\":\"America/Los_Angeles\",\"events\":[{\"calendarId\":\"demo-family\",\"id\":\"a\",\"summary\":\"Demo: breakfast plan\",\"start\":{\"dateTime\":\"2026-11-01T09:00:00-08:00\"},\"end\":{\"dateTime\":\"2026-11-01T09:30:00-08:00\"}},{\"calendarId\":\"demo-family\",\"id\":\"b\",\"summary\":\"Demo: grocery pickup\",\"start\":{\"dateTime\":\"2026-11-01T09:15:00-08:00\"},\"end\":{\"dateTime\":\"2026-11-01T10:00:00-08:00\"}},{\"calendarId\":\"demo-family\",\"id\":\"c\",\"summary\":\"Demo: library books due\",\"start\":{\"date\":\"2026-11-01\"},\"end\":{\"date\":\"2026-11-02\"}},{\"calendarId\":\"demo-family\",\"id\":\"d\",\"summary\":\"Demo: cancelled event\",\"start\":{\"dateTime\":\"2026-11-01T11:00:00-08:00\"},\"end\":{\"dateTime\":\"2026-11-01T12:00:00-08:00\"},\"status\":\"cancelled\"},{\"calendarId\":\"demo-family\",\"id\":\"a\",\"summary\":\"Demo: breakfast plan\",\"start\":{\"dateTime\":\"2026-11-01T09:00:00-08:00\"},\"end\":{\"dateTime\":\"2026-11-01T09:30:00-08:00\"}}]}}];"
+      }
+    },
+    {
+      "id": "Validate-and-prepare-local-draft",
+      "name": "Validate and prepare local draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        0
+      ],
+      "parameters": {
+        "jsCode": "'use strict';\nfunction validDate(s) { return typeof s==='string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(s) && Number.isFinite(Date.parse(s+'T00:00:00Z')) && new Date(s+'T00:00:00Z').toISOString().slice(0,10)===s; }\nfunction instant(s) {\n if(typeof s!=='string'||!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(s)||!validDate(s.slice(0,10))||Number(s.slice(11,13))>23||Number(s.slice(14,16))>59||Number(s.slice(17,19))>59)throw Error('Timed events require valid ISO timestamps with an explicit offset');\n const n=Date.parse(s);if(!Number.isFinite(n))throw Error('Invalid timestamp');return n;\n}\nfunction makeDigest(input) {\n if(!input||!validDate(input.date)||typeof input.timeZone!=='string'||!Array.isArray(input.events)||input.events.length>1000)throw Error('Expected date, IANA timeZone, and at most 1000 events');\n const parts=new Intl.DateTimeFormat('en-CA',{timeZone:input.timeZone,year:'numeric',month:'2-digit',day:'2-digit'});\n const day=n=>{const p=Object.fromEntries(parts.formatToParts(n).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`;};\n const time=new Intl.DateTimeFormat('en-US',{timeZone:input.timeZone,hour:'numeric',minute:'2-digit',timeZoneName:'short'});\n const seen=new Map(),events=[],warnings=[];let skippedCancelled=0,skippedDuplicates=0;\n for(let i=0;i<input.events.length;i++){\n  const e=input.events[i];if(!e||typeof e!=='object')throw Error(`Invalid event at index ${i}`);\n  if(typeof e.id!=='string'||!e.id.trim()||typeof e.calendarId!=='string'||!e.calendarId.trim())throw Error(`Missing source identity at index ${i}`);\n  const key=JSON.stringify([e.calendarId,e.id]);const fingerprint=JSON.stringify([e.summary??null,e.start??null,e.end??null,e.status??'confirmed']);if(seen.has(key)){if(seen.get(key)!==fingerprint)throw Error(`Conflicting versions for event at index ${i}`);skippedDuplicates++;continue;}seen.set(key,fingerprint);\n  if(e.status==='cancelled'){skippedCancelled++;continue;}\n  const title=typeof e.summary==='string'?e.summary.replace(/[\\r\\n\\t]/g,' ').slice(0,200):'(Untitled event)';\n  const allDay=typeof e.start?.date==='string';\n  if(allDay){\n   if(!validDate(e.start.date)||!validDate(e.end?.date)||e.end.date<=e.start.date||e.start.dateTime||e.end.dateTime)throw Error(`Invalid all-day interval at index ${i}`);\n   if(e.start.date<=input.date&&input.date<e.end.date)events.push({id:e.id,calendarId:e.calendarId,title,allDay:true,time:'All day'});\n  }else{\n   const start=instant(e.start?.dateTime),end=instant(e.end?.dateTime);if(end<=start||e.start.date||e.end.date)throw Error(`Invalid timed interval at index ${i}`);\n   if(day(start)<=input.date&&day(end-1)>=input.date)events.push({id:e.id,calendarId:e.calendarId,title,allDay:false,start,end,time:`${day(start)} ${time.format(start)} – ${day(end)} ${time.format(end)}`});\n  }\n }\n events.sort((a,b)=>Number(b.allDay)-Number(a.allDay)||(a.start||0)-(b.start||0)||a.title.localeCompare(b.title));\n const overlaps=[];\n for(let i=0;i<events.length;i++)for(let j=i+1;j<events.length;j++){\n  const a=events[i],b=events[j];if(!a.allDay&&!b.allDay&&Math.max(a.start,b.start)<Math.min(a.end,b.end)){\n   const begin=Math.max(a.start,b.start),finish=Math.min(a.end,b.end);\n   if(day(begin)<=input.date&&day(finish-1)>=input.date)overlaps.push([i,j]);\n  }\n }\n if(overlaps.length)warnings.push(`${overlaps.length} overlapping pair(s): review manually; shared copies of an event may also overlap.`);\n const lines=[`DRAFT — ${input.date} (${input.timeZone})`,...events.map(e=>`${e.time} | ${e.title}`),...(events.length?[]:['No events for this date.']),...warnings,...overlaps.map(([a,b])=>`Overlap: ${events[a].title} / ${events[b].title}`),'Review before sharing. Nothing was sent.'];\n return {date:input.date,timeZone:input.timeZone,events,overlaps,skippedCancelled,skippedDuplicates,draft:lines.join('\\n'),delivery:'local-draft-only'};\n}\n\n\nreturn [{json: makeDigest($input.first().json)}];"
+      }
+    }
+  ],
+  "connections": {
+    "Manual demo": {
+      "main": [
+        [
+          {
+            "node": "Synthetic calendar events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Synthetic calendar events": {
+      "main": [
+        [
+          {
+            "node": "Validate and prepare local draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  }
+}

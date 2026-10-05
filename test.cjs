@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'),{makeDigest}=require('./digest.js');const sample=require('./sample-input.json');let count=0;function test(n,f){f();count++;console.log('PASS',n);}const run=(events,date='2026-11-01',timeZone='America/Los_Angeles')=>makeDigest({date,timeZone,events});const e=(id,s,t)=>({calendarId:'a',id,summary:id,start:{dateTime:s},end:{dateTime:t}});
+test('sample filters cancellation and duplicate, flags actual conflict',()=>{const d=makeDigest(sample);assert.equal(d.events.length,3);assert.equal(d.overlaps.length,1);assert.equal(d.skippedCancelled,1);assert.equal(d.skippedDuplicates,1)});
+test('input preserved',()=>{const x=JSON.stringify(sample);makeDigest(sample);assert.equal(JSON.stringify(sample),x)});
+test('adjacent appointments do not conflict',()=>assert.equal(run([e('a','2026-11-01T10:00:00-08:00','2026-11-01T11:00:00-08:00'),e('b','2026-11-01T11:00:00-08:00','2026-11-01T12:00:00-08:00')]).overlaps.length,0));
+test('DST repeated hour uses absolute instants',()=>{const d=run([e('a','2026-11-01T01:10:00-07:00','2026-11-01T01:40:00-07:00'),e('b','2026-11-01T01:10:00-08:00','2026-11-01T01:40:00-08:00')]);assert.equal(d.events.length,2);assert.equal(d.overlaps.length,0);assert.match(d.draft,/PDT/);assert.match(d.draft,/PST/)});
+test('all-day end date is exclusive',()=>assert.equal(run([{calendarId:'a',id:'a',start:{date:'2026-10-31'},end:{date:'2026-11-01'}}]).events.length,0));
+test('midnight end excluded from following day',()=>assert.equal(run([e('a','2026-10-31T23:00:00-07:00','2026-11-01T00:00:00-07:00')]).events.length,0));
+test('overnight event included',()=>assert.equal(run([e('a','2026-10-31T23:00:00-07:00','2026-11-01T00:01:00-07:00')]).events.length,1));
+test('same IDs from different calendars are retained',()=>{const a=sample.events[0];assert.equal(run([a,{...a,calendarId:'other'}]).events.length,2)});
+test('invalid date, zone, offsetless time, reversed time rejected',()=>{assert.throws(()=>run([],'2026-02-30'));assert.throws(()=>run([],'2026-11-01','Invalid/Zone'));assert.throws(()=>run([e('a','2026-11-01T12:00:00','2026-11-01T13:00:00Z')]));assert.throws(()=>run([e('a','2026-11-01T13:00:00Z','2026-11-01T12:00:00Z')]))});
+test('no private source fields copied',()=>{const a={...sample.events[0],description:'PRIVATE-DOCUMENT',attendees:[{email:'private@example.invalid'}],location:'PRIVATE-ADDRESS'};const out=JSON.stringify(run([a]));assert(!out.includes('PRIVATE'));assert(!out.includes('private@example'))});
+test('empty day handled',()=>assert.match(run([]).draft,/No events/));
+test('oversized input rejected',()=>assert.throws(()=>run(Array(1001).fill(sample.events[0]))));
+test('malformed IDs and records rejected',()=>{assert.throws(()=>run([null]));assert.throws(()=>run([{...sample.events[0],id:''}]))});
+test('conflicting duplicate versions stop for review',()=>{const a=sample.events[0];assert.throws(()=>run([a,{...a,summary:'Changed'}]));assert.throws(()=>run([a,{...a,status:'cancelled'}]))});
+test('24:00 normalization rejected',()=>assert.throws(()=>run([e('a','2026-11-01T24:00:00Z','2026-11-02T02:00:00Z')])));
+console.log(`${count} focused checks passed.`);
